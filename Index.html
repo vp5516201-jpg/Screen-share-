@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,43 +6,100 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Game Stream</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #222; color: white; }
-        video { width: 90%; max-width: 1000px; border: 2px solid #555; background: black; margin-top: 20px; }
-        .controls { margin: 20px; text-align: center; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; }
-        button:hover { background: #218838; }
-        input { padding: 10px; width: 300px; text-align: center; }
-        #status { margin-top: 10px; color: #aaa; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #1a1a1a; color: white; }
+        
+        /* Video Player Style */
+        video { 
+            width: 90%; 
+            max-width: 1200px; 
+            border-radius: 10px; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            background: black; 
+            margin-top: 20px; 
+        }
+
+        /* Controls Section */
+        .controls { 
+            background: #2d2d2d; 
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+            text-align: center; 
+            max-width: 400px;
+            width: 100%;
+        }
+
+        h2 { margin-bottom: 10px; color: #4ade80; }
+        p { color: #aaa; margin-bottom: 20px; }
+
+        /* Start Button */
+        button { 
+            padding: 15px 40px; 
+            font-size: 18px; 
+            cursor: pointer; 
+            background: linear-gradient(135deg, #10b981, #059669); 
+            color: white; 
+            border: none; 
+            border-radius: 50px; 
+            font-weight: bold; 
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover { 
+            transform: scale(1.05); 
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); 
+        }
+
+        /* Link Input Box */
+        input { 
+            padding: 12px; 
+            width: 80%; 
+            text-align: center; 
+            border-radius: 5px; 
+            border: 1px solid #444; 
+            background: #111; 
+            color: #fff; 
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        #status { margin-top: 15px; font-size: 14px; color: #fbbf24; }
     </style>
 </head>
 <body>
 
+    <!-- SCREEN 1: Start Button -->
     <div class="controls" id="start-screen">
-        <h2>Game Streaming</h2>
-        <p>Click below to start streaming your game.</p>
-        
-        <!-- Yahan change kiya hai: Button ka text ab "Start Game" hai -->
+        <h2>🎮 Start Streaming</h2>
+        <p>Click below to start your game stream.</p>
         <button onclick="startSharing()">Start Game</button>
     </div>
 
+    <!-- SCREEN 2: Waiting / Link Share -->
     <div class="controls" id="waiting-screen" style="display:none;">
-        <h3>Share this link to invite viewers:</h3>
+        <h3>🔗 Invite Viewer</h3>
+        <p>Send this link to your friend:</p>
         <input type="text" id="share-link" readonly onclick="this.select()">
         <p id="status">Waiting for connection...</p>
     </div>
 
+    <!-- SCREEN 3: Video Player (For Viewer) -->
     <video id="remote-video" autoplay playsinline style="display:none;"></video>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io(); // Auto-connects to your Render server
         let peerConnection;
+        
+        // Aapka Render URL yahan fix kar diya hai taaki link hamesha sahi bane
+        const SITE_URL = "https://screen-share-iznp.onrender.com"; 
+        
         const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room');
         const isViewer = !!roomId;
 
+        // --- VIEWER LOGIC (Jo link kholega) ---
         if (isViewer) {
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('remote-video').style.display = 'block';
@@ -51,9 +109,12 @@
             setupPeerConnection();
         }
 
+        // --- HOST LOGIC (Jo Game Khelega) ---
         async function startSharing() {
             const newRoomId = Math.random().toString(36).substr(2, 9);
-            const link = window.location.href + '?room=' + newRoomId;
+            
+            // Yahan link generate ho raha hai aapke Render URL ke saath
+            const link = SITE_URL + '?room=' + newRoomId;
             
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('waiting-screen').style.display = 'block';
@@ -62,15 +123,15 @@
             socket.emit('join-room', newRoomId, 'host');
 
             try {
-                // Audio: true kar diya hai taaki game ki awaz bhi jaye
+                // Game Audio + Video capture
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
                 setupPeerConnection();
                 stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
                 
-                document.getElementById('status').innerText = "Game is live! Waiting for viewers...";
+                document.getElementById('status').innerText = "🔴 Live! Waiting for viewer to join...";
             } catch (err) {
                 console.error("Error: " + err);
-                alert("Permission denied. Please allow screen sharing.");
+                alert("Permission denied or cancelled.");
                 location.reload();
             }
         }
@@ -80,7 +141,13 @@
 
             peerConnection.onicecandidate = event => {
                 if (event.candidate) {
-                    socket.emit('signal', { room: roomId || document.getElementById('share-link').value.split('=')[1], type: 'candidate', data: event.candidate });
+                    let room = roomId;
+                    if (!room) {
+                        // Agar host hai to input box se link nikal ke room ID dhoondo
+                        const linkVal = document.getElementById('share-link').value;
+                        room = linkVal.split('?room=')[1];
+                    }
+                    socket.emit('signal', { room: room, type: 'candidate', data: event.candidate });
                 }
             };
 
@@ -100,7 +167,8 @@
                 } 
                 else if (message.type === 'answer') {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data));
-                    document.getElementById('status').innerText = "Viewer Connected!";
+                    document.getElementById('status').innerText = "✅ Viewer Connected! Enjoy Game.";
+                    document.getElementById('status').style.color = "#4ade80";
                 } 
                 else if (message.type === 'candidate') {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(message.data));
@@ -111,7 +179,11 @@
                 if (!isViewer) {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
-                    socket.emit('signal', { room: document.getElementById('share-link').value.split('=')[1], type: 'offer', data: offer });
+                    
+                    const linkVal = document.getElementById('share-link').value;
+                    const myRoom = linkVal.split('?room=')[1];
+                    
+                    socket.emit('signal', { room: myRoom, type: 'offer', data: offer });
                 }
             });
         }
