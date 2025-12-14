@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Screen Share</title>
+    <title>Live Game Stream</title>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #222; color: white; }
         video { width: 90%; max-width: 1000px; border: 2px solid #555; background: black; margin-top: 20px; }
         .controls { margin: 20px; text-align: center; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; }
+        button:hover { background: #218838; }
         input { padding: 10px; width: 300px; text-align: center; }
         #status { margin-top: 10px; color: #aaa; }
     </style>
@@ -16,13 +17,15 @@
 <body>
 
     <div class="controls" id="start-screen">
-        <h2>Screen Sharing App</h2>
-        <p>Click below to generate a link and share your screen.</p>
-        <button onclick="startSharing()">Start Sharing</button>
+        <h2>Game Streaming</h2>
+        <p>Click below to start streaming your game.</p>
+        
+        <!-- Yahan change kiya hai: Button ka text ab "Start Game" hai -->
+        <button onclick="startSharing()">Start Game</button>
     </div>
 
     <div class="controls" id="waiting-screen" style="display:none;">
-        <h3>Share this link with your viewer:</h3>
+        <h3>Share this link to invite viewers:</h3>
         <input type="text" id="share-link" readonly onclick="this.select()">
         <p id="status">Waiting for connection...</p>
     </div>
@@ -39,17 +42,15 @@
         const roomId = urlParams.get('room');
         const isViewer = !!roomId;
 
-        // Agar Viewer hai (Link open kiya hai)
         if (isViewer) {
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('remote-video').style.display = 'block';
-            document.getElementById('status').innerText = "Connecting to host...";
+            document.getElementById('status').innerText = "Connecting to streamer...";
             
             socket.emit('join-room', roomId, 'viewer');
             setupPeerConnection();
         }
 
-        // Host Screen Share Start karega
         async function startSharing() {
             const newRoomId = Math.random().toString(36).substr(2, 9);
             const link = window.location.href + '?room=' + newRoomId;
@@ -60,16 +61,16 @@
 
             socket.emit('join-room', newRoomId, 'host');
 
-            // Screen Permission Maangna
             try {
+                // Audio: true kar diya hai taaki game ki awaz bhi jaye
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
                 setupPeerConnection();
                 stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
                 
-                document.getElementById('status').innerText = "Screen is active. Waiting for viewer...";
+                document.getElementById('status').innerText = "Game is live! Waiting for viewers...";
             } catch (err) {
                 console.error("Error: " + err);
-                alert("Permission denied or error: " + err);
+                alert("Permission denied. Please allow screen sharing.");
                 location.reload();
             }
         }
@@ -106,7 +107,6 @@
                 }
             });
             
-            // Connection start logic
             socket.on('user-connected', async () => {
                 if (!isViewer) {
                     const offer = await peerConnection.createOffer();
