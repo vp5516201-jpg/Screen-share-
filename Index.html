@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Screen Share</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #222; color: white; }
+        video { width: 90%; max-width: 1000px; border: 2px solid #555; background: black; margin-top: 20px; }
+        .controls { margin: 20px; text-align: center; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        input { padding: 10px; width: 300px; text-align: center; }
+        #status { margin-top: 10px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div class="controls" id="start-screen">
+        <h2>Screen Sharing App</h2>
+        <p>Click below to generate a link and share your screen.</p>
+        <button onclick="startSharing()">Start Sharing</button>
+    </div>
+
+    <div class="controls" id="waiting-screen" style="display:none;">
+        <h3>Share this link with your viewer:</h3>
+        <input type="text" id="share-link" readonly onclick="this.select()">
+        <p id="status">Waiting for connection...</p>
+    </div>
+
+    <video id="remote-video" autoplay playsinline style="display:none;"></video>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let peerConnection;
+        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room');
+        const isViewer = !!roomId;
+
+        // Agar Viewer hai (Link open kiya hai)
+        if (isViewer) {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('remote-video').style.display = 'block';
+            document.getElementById('status').innerText = "Connecting to host...";
+            
+            socket.emit('join-room', roomId, 'viewer');
+            setupPeerConnection();
+        }
+
+        // Host Screen Share Start karega
+        async function startSharing() {
+            const newRoomId = Math.random().toString(36).substr(2, 9);
+            const link = window.location.href + '?room=' + newRoomId;
+            
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('waiting-screen').style.display = 'block';
+            document.getElementById('share-link').value = link;
+
+            socket.emit('join-room', newRoomId, 'host');
+
+            // Screen Permission Maangna
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                setupPeerConnection();
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+                
+                document.getElementById('status').innerText = "Screen is active. Waiting for viewer...";
+            } catch (err) {
+                console.error("Error: " + err);
+                alert("Permission denied or error: " + err);
+                location.reload();
+            }
+        }
+
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(config);
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('signal', { room: roomId || document.getElementById('share-link').value.split('=')[1], type: 'candidate', data: event.candidate });
+                }
+            };
+
+            peerConnection.ontrack = event => {
+                const video = document.getElementById('remote-video');
+                video.srcObject = event.streams[0];
+            };
+
+            socket.on('signal', async message => {
+                if (message.sender === socket.id) return;
+
+                if (message.type === 'offer') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('signal', { room: roomId, type: 'answer', data: answer });
+                } 
+                else if (message.type === 'answer') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data));
+                    document.getElementById('status').innerText = "Viewer Connected!";
+                } 
+                else if (message.type === 'candidate') {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(message.data));
+                }
+            });
+            
+            // Connection start logic
+            socket.on('user-connected', async () => {
+                if (!isViewer) {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('signal', { room: document.getElementById('share-link').value.split('=')[1], type: 'offer', data: offer });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
